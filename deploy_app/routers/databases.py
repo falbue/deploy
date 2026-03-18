@@ -21,6 +21,10 @@ from deploy_app.services.docker_ops import (
 router = APIRouter(prefix="/databases", tags=["databases"])
 
 
+def build_owner_dir_name(owner_username: str) -> str:
+    return re.sub(r"[^a-z0-9_-]", "-", owner_username.lower())
+
+
 def get_database_or_404(session: Session, database_id: int) -> DatabaseInstance:
     db_instance = session.get(DatabaseInstance, database_id)
     if not db_instance:
@@ -59,10 +63,10 @@ def create_database(
             status_code=409, detail="База с таким именем уже существует"
         )
 
-    user_id = current_user.id or 0
+    owner_name = build_owner_dir_name(current_user.username)
     host_port = allocate_db_port(session, current_user)
-    service_name = f"db-u{user_id}-{safe_name}"
-    db_dir = DB_ROOT / f"u{user_id}" / safe_name
+    service_name = f"db-{owner_name}-{safe_name.lower()}"
+    db_dir = DB_ROOT / owner_name / safe_name.lower()
     db_dir.mkdir(parents=True, exist_ok=True)
     volume_path = db_dir / "postgres"
     volume_path.mkdir(parents=True, exist_ok=True)

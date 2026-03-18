@@ -35,9 +35,20 @@ from deploy_app.services.docker_ops import (
 router = APIRouter(prefix="/deployments", tags=["deployments"])
 
 
-def build_app_project_name(owner_repo: str, user_id: int) -> str:
+def build_repo_dir_name(owner_repo: str) -> str:
     repo_name = owner_repo.split("/", 1)[1]
-    raw_name = f"dpl-u{user_id}-{repo_name}"
+    raw_name = repo_name
+    return re.sub(r"[^a-z0-9_-]", "-", raw_name.lower())
+
+
+def build_owner_dir_name(owner_username: str) -> str:
+    return re.sub(r"[^a-z0-9_-]", "-", owner_username.lower())
+
+
+def build_app_project_name(owner_repo: str, owner_username: str) -> str:
+    repo_name = build_repo_dir_name(owner_repo)
+    owner_name = build_owner_dir_name(owner_username)
+    raw_name = f"{owner_name}-{repo_name}"
     return re.sub(r"[^a-z0-9_-]", "-", raw_name.lower())
 
 
@@ -68,10 +79,11 @@ def create_deployment(
             status_code=409, detail="Этот репозиторий уже задеплоен пользователем"
         )
 
-    user_id = current_user.id or 0
-    project_name = build_app_project_name(body.owner_repo, user_id)
+    owner_name = build_owner_dir_name(current_user.username)
+    repo_dir_name = build_repo_dir_name(body.owner_repo)
+    project_name = build_app_project_name(body.owner_repo, current_user.username)
     app_port = allocate_app_port(session, current_user)
-    deploy_path = DEPLOY_ROOT / project_name
+    deploy_path = DEPLOY_ROOT / owner_name / repo_dir_name
     deploy_path.mkdir(parents=True, exist_ok=True)
 
     compose_path = deploy_path / "docker-compose.yml"
@@ -155,7 +167,10 @@ def redeploy(
     deployment.tag = body.tag
     deployment.updated_at = datetime.utcnow()
     deploy_path = Path(deployment.deploy_path)
-    project_name = deploy_path.name
+    owner = session.get(User, deployment.owner_id)
+    if not owner:
+        raise HTTPException(status_code=500, detail="Владелец деплоя не найден")
+    project_name = build_app_project_name(deployment.owner_repo, owner.username)
     compose_path = deploy_path / "docker-compose.yml"
     compose_path.write_text(
         render_app_compose(
