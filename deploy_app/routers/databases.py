@@ -11,7 +11,11 @@ from deploy_app.deps import require_auth
 from deploy_app.models import DatabaseInstance, User, UserRole
 from deploy_app.routers.deployments import get_deployment_or_404
 from deploy_app.schemas import DatabaseCreateRequest, DatabaseRead
-from deploy_app.services.deployments import allocate_db_port, can_access_deployment
+from deploy_app.services.deployments import (
+    allocate_db_port,
+    can_access_deployment,
+    get_docker_config_dir_for_user,
+)
 from deploy_app.services.docker_ops import (
     docker_compose_apply,
     docker_compose_down,
@@ -100,7 +104,10 @@ def create_database(
 
     if body.run_deploy:
         try:
-            docker_compose_apply(compose_path)
+            docker_compose_apply(
+                compose_path,
+                docker_config_dir=get_docker_config_dir_for_user(current_user),
+            )
             db_instance.status = "running"
             session.add(db_instance)
             session.commit()
@@ -170,7 +177,13 @@ def apply_database(
         raise HTTPException(status_code=404, detail="docker-compose.yml не найден")
 
     try:
-        docker_compose_apply(compose_path)
+        owner = session.get(User, db_instance.owner_id)
+        if not owner:
+            raise HTTPException(status_code=500, detail="Владелец базы не найден")
+        docker_compose_apply(
+            compose_path,
+            docker_config_dir=get_docker_config_dir_for_user(owner),
+        )
         db_instance.status = "running"
         session.add(db_instance)
         session.commit()
@@ -198,7 +211,14 @@ def delete_database(
     compose_path = Path(db_instance.compose_path)
     if compose_path.exists():
         try:
-            docker_compose_down(compose_path, remove_volumes=True)
+            owner = session.get(User, db_instance.owner_id)
+            if not owner:
+                raise HTTPException(status_code=500, detail="Владелец базы не найден")
+            docker_compose_down(
+                compose_path,
+                remove_volumes=True,
+                docker_config_dir=get_docker_config_dir_for_user(owner),
+            )
         except Exception as exc:
             raise HTTPException(
                 status_code=500, detail=f"Не удалось удалить БД контейнер: {exc}"

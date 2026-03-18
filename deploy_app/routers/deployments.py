@@ -22,6 +22,7 @@ from deploy_app.services.deployments import (
     can_access_deployment,
     check_deploy_limit,
     dump_env,
+    get_docker_config_dir_for_user,
     parse_env,
     validate_owner_repo,
     write_env_file,
@@ -110,7 +111,10 @@ def create_deployment(
 
     if body.run_deploy:
         try:
-            docker_compose_apply(compose_path)
+            docker_compose_apply(
+                compose_path,
+                docker_config_dir=get_docker_config_dir_for_user(current_user),
+            )
         except Exception as exc:
             raise HTTPException(
                 status_code=500, detail=f"Не удалось выполнить deploy: {exc}"
@@ -186,7 +190,10 @@ def redeploy(
     session.refresh(deployment)
 
     try:
-        docker_compose_apply(compose_path)
+        docker_compose_apply(
+            compose_path,
+            docker_config_dir=get_docker_config_dir_for_user(owner),
+        )
     except Exception as exc:
         raise HTTPException(
             status_code=500, detail=f"Не удалось выполнить redeploy: {exc}"
@@ -266,7 +273,13 @@ def apply_deployment(
     if not compose_path.exists():
         raise HTTPException(status_code=404, detail="docker-compose.yml не найден")
     try:
-        docker_compose_apply(compose_path)
+        owner = session.get(User, deployment.owner_id)
+        if not owner:
+            raise HTTPException(status_code=500, detail="Владелец деплоя не найден")
+        docker_compose_apply(
+            compose_path,
+            docker_config_dir=get_docker_config_dir_for_user(owner),
+        )
     except Exception as exc:
         raise HTTPException(
             status_code=500, detail=f"Не удалось применить деплой: {exc}"
@@ -297,7 +310,14 @@ def delete_deployment(
     compose_path = deploy_path / "docker-compose.yml"
     if compose_path.exists():
         try:
-            docker_compose_down(compose_path, remove_volumes=True)
+            owner = session.get(User, deployment.owner_id)
+            if not owner:
+                raise HTTPException(status_code=500, detail="Владелец деплоя не найден")
+            docker_compose_down(
+                compose_path,
+                remove_volumes=True,
+                docker_config_dir=get_docker_config_dir_for_user(owner),
+            )
         except Exception as exc:
             raise HTTPException(
                 status_code=500, detail=f"Не удалось остановить деплой: {exc}"

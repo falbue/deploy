@@ -9,6 +9,7 @@ from deploy_app.config import (
     APP_PORT_OFFSET_START,
     DB_PORT_OFFSET_END,
     DB_PORT_OFFSET_START,
+    DOCKER_AUTH_ROOT,
     USER_PORT_BLOCK_START,
 )
 from deploy_app.models import DatabaseInstance, Deployment, User, UserRole
@@ -113,3 +114,8 @@ def allocate_db_port(session: Session, user: User) -> int:
         status_code=507,
         detail=f"Свободные DB порты пользователя закончились в диапазоне {start_port}-{end_port}",
     )
+
+
+def get_docker_config_dir_for_user(user: User) -> Path:
+    owner = re.sub(r"[^a-z0-9_-]", "-", user.username.lower())
+    return DOCKER_AUTH_ROOT / owner

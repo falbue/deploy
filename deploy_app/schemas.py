@@ -30,6 +30,11 @@ class UserRoleUpdateRequest(BaseModel):
     role: UserRole
 
 
+class GhcrLoginRequest(BaseModel):
+    github_username: str = PydanticField(min_length=1)
+    github_token: str = PydanticField(min_length=1)
+
+
 class DeploymentCreateRequest(BaseModel):
     owner_repo: str = PydanticField(description="owner/repo")
     tag: str = PydanticField(min_length=1)
@@ -79,3 +84,25 @@ class DatabaseRead(BaseModel):
     compose_path: str
     status: str
     created_at: datetime
+
+
+class NginxPresetApiRequest(BaseModel):
+    domain: str = PydanticField(min_length=3)
+    force_https: bool = True
+
+
+class NginxPresetPreviewRequest(BaseModel):
+    domain: str = PydanticField(min_length=3)
+    force_https: bool = True
+    use_ssl: bool = False
+
+
+class NginxCustomConfigRequest(BaseModel):
+    domain: str = PydanticField(min_length=3)
+    content: str = PydanticField(min_length=1)
+
+
+class NginxCertbotRequest(BaseModel):
+    domain: str = PydanticField(min_length=3)
+    email: str = PydanticField(min_length=3)
+    staging: bool = False

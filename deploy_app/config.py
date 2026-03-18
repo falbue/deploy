@@ -5,6 +5,11 @@ DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./deploy.db")
 DEPLOY_ROOT = Path(os.environ.get("DEPLOY_ROOT", "/apps"))
 DB_ROOT = Path(os.environ.get("DB_ROOT", "/apps/databases"))
 DB_NET_NAME = os.environ.get("DB_NET_NAME", "db-net")
+WEB_NET_NAME = os.environ.get("WEB_NET_NAME", "web-net")
+NGINX_GATEWAY_ROOT = Path(
+	os.environ.get("NGINX_GATEWAY_ROOT", "/data/nginx-gateway")
+)
+DOCKER_AUTH_ROOT = Path(os.environ.get("DOCKER_AUTH_ROOT", "/data/docker-auth"))
 
 # user_id=1 -> 2000-2999, user_id=2 -> 3000-3999 и т.д.
 USER_PORT_BLOCK_START = int(os.environ.get("USER_PORT_BLOCK_START", "2"))

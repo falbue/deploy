@@ -46,10 +46,13 @@
 
 См. `.env-template`:
 
-- `DATABASE_URL=sqlite:////apps/deploy.db`
+- `DATABASE_URL=sqlite:////data/deploy.db`
 - `DEPLOY_ROOT=/data/deployments`
 - `DB_ROOT=/data/databases`
 - `DB_NET_NAME=db-net`
+- `WEB_NET_NAME=web-net`
+- `NGINX_GATEWAY_ROOT=/data/nginx-gateway`
+- `DOCKER_AUTH_ROOT=/data/docker-auth`
 - `USER_PORT_BLOCK_START=2`
 - `APP_PORT_OFFSET_START=0`
 - `APP_PORT_OFFSET_END=899`
@@ -99,6 +102,8 @@ curl http://127.0.0.1:1500/health
 
 - `GET /health`
 - `GET /me`
+- `POST /ghcr/login`
+- `POST /ghcr/logout`
 
 ### Админ
 
@@ -127,6 +132,14 @@ curl http://127.0.0.1:1500/health
 - `GET /databases`
 - `POST /databases/{database_id}/apply`
 - `DELETE /databases/{database_id}`
+
+### Nginx и SSL
+
+- `POST /deployments/{deployment_id}/nginx/preview/preset-api`
+- `POST /deployments/{deployment_id}/nginx/preset-api`
+- `PUT /deployments/{deployment_id}/nginx/custom`
+- `POST /deployments/{deployment_id}/nginx/certbot`
+- `DELETE /deployments/{deployment_id}/nginx?domain=example.com`
 
 ## Примеры запросов
 
@@ -164,11 +177,28 @@ curl -X POST http://127.0.0.1:1500/databases \
   -H "X-API-Key: USER_KEY" \
   -H "Content-Type: application/json" \
   -d '{"name":"main","deployment_id":1,"postgres_image":"postgres:18","postgres_user":"db_user","postgres_password":"db_pass","postgres_db":"db_name","run_deploy":true}'
+```
 
 Запустить БД, созданную ранее с `run_deploy=false`:
 
 ```bash
 curl -X POST http://127.0.0.1:1500/databases/1/apply \
+  -H "X-API-Key: USER_KEY"
+```
+
+Логин в приватный GHCR:
+
+```bash
+curl -X POST http://127.0.0.1:1500/ghcr/login \
+  -H "X-API-Key: USER_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"github_username":"your-github-login","github_token":"ghp_xxx"}'
+```
+
+Логаут из GHCR:
+
+```bash
+curl -X POST http://127.0.0.1:1500/ghcr/logout \
   -H "X-API-Key: USER_KEY"
 ```
 
@@ -185,6 +215,32 @@ curl -X DELETE http://127.0.0.1:1500/databases/1 \
 curl -X DELETE http://127.0.0.1:1500/deployments/1 \
   -H "X-API-Key: USER_KEY"
 ```
+
+Создать nginx preset для API:
+
+```bash
+curl -X POST http://127.0.0.1:1500/deployments/1/nginx/preset-api \
+  -H "X-API-Key: USER_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"domain":"api.example.com","force_https":true}'
+```
+
+Предпросмотр preset-конфига без сохранения:
+
+```bash
+curl -X POST http://127.0.0.1:1500/deployments/1/nginx/preview/preset-api \
+  -H "X-API-Key: USER_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"domain":"api.example.com","force_https":true,"use_ssl":false}'
+```
+
+Выпустить SSL сертификат через certbot и включить HTTPS:
+
+```bash
+curl -X POST http://127.0.0.1:1500/deployments/1/nginx/certbot \
+  -H "X-API-Key: USER_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"domain":"api.example.com","email":"ops@example.com","staging":false}'
 ```
 
 ## Примечание по compose для БД
@@ -197,6 +253,18 @@ curl -X DELETE http://127.0.0.1:1500/deployments/1 \
 - `postgres_db`
 - сеть `db-net` (external)
 - порт `127.0.0.1:<выделенный_порт>:5432`
+
+## Nginx Gateway
+
+Сервис автоматически поднимает gateway-стек в `NGINX_GATEWAY_ROOT`:
+
+- `nginx:alpine` (порты `80/443`)
+- `certbot/certbot` с автообновлением сертификатов каждые 12 часов
+- сеть `web-net` (external)
+
+Все app-контейнеры автоматически подключаются к `web-net`, поэтому nginx может проксировать на любой деплой.
+
+Перед сохранением и применением nginx-конфига API выполняет `nginx -t`; при ошибке конфиг откатывается.
 
 
 
