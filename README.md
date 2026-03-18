@@ -47,8 +47,8 @@
 См. `.env-template`:
 
 - `DATABASE_URL=sqlite:////apps/deploy.db`
-- `DEPLOY_ROOT=/apps`
-- `DB_ROOT=/apps/databases`
+- `DEPLOY_ROOT=/data/deployments`
+- `DB_ROOT=/data/databases`
 - `DB_NET_NAME=db-net`
 - `USER_PORT_BLOCK_START=2`
 - `APP_PORT_OFFSET_START=0`
@@ -113,6 +113,7 @@ curl http://127.0.0.1:1500/health
 - `GET /deployments`
 - `POST /deployments/{deployment_id}/redeploy`
 - `POST /deployments/{deployment_id}/apply`
+- `DELETE /deployments/{deployment_id}`
 
 ### ENV
 
@@ -124,6 +125,8 @@ curl http://127.0.0.1:1500/health
 
 - `POST /databases`
 - `GET /databases`
+- `POST /databases/{database_id}/apply`
+- `DELETE /databases/{database_id}`
 
 ## Примеры запросов
 
@@ -160,7 +163,28 @@ curl -X PATCH http://127.0.0.1:1500/deployments/1/env \
 curl -X POST http://127.0.0.1:1500/databases \
   -H "X-API-Key: USER_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"name":"main","deployment_id":1,"postgres_image":"postgres:18","postgres_user":"falbue","postgres_password":"G0ri!!@r<3","postgres_db":"falbue","run_deploy":true}'
+  -d '{"name":"main","deployment_id":1,"postgres_image":"postgres:18","postgres_user":"db_user","postgres_password":"db_pass","postgres_db":"db_name","run_deploy":true}'
+
+Запустить БД, созданную ранее с `run_deploy=false`:
+
+```bash
+curl -X POST http://127.0.0.1:1500/databases/1/apply \
+  -H "X-API-Key: USER_KEY"
+```
+
+Удалить БД:
+
+```bash
+curl -X DELETE http://127.0.0.1:1500/databases/1 \
+  -H "X-API-Key: USER_KEY"
+```
+
+Удалить деплой:
+
+```bash
+curl -X DELETE http://127.0.0.1:1500/deployments/1 \
+  -H "X-API-Key: USER_KEY"
+```
 ```
 
 ## Примечание по compose для БД

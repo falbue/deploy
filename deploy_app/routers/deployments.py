@@ -1,5 +1,7 @@
 from datetime import datetime
 from pathlib import Path
+import re
+import shutil
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, col, select
@@ -7,7 +9,7 @@ from sqlmodel import Session, col, select
 from deploy_app.config import DEPLOY_ROOT
 from deploy_app.db import get_session
 from deploy_app.deps import require_auth
-from deploy_app.models import Deployment, User, UserRole
+from deploy_app.models import DatabaseInstance, Deployment, User, UserRole
 from deploy_app.schemas import (
     DeploymentCreateRequest,
     DeploymentRead,
@@ -24,9 +26,19 @@ from deploy_app.services.deployments import (
     validate_owner_repo,
     write_env_file,
 )
-from deploy_app.services.docker_ops import docker_compose_apply, render_app_compose
+from deploy_app.services.docker_ops import (
+    docker_compose_apply,
+    docker_compose_down,
+    render_app_compose,
+)
 
 router = APIRouter(prefix="/deployments", tags=["deployments"])
+
+
+def build_app_project_name(owner_repo: str, user_id: int) -> str:
+    repo_name = owner_repo.split("/", 1)[1]
+    raw_name = f"dpl-u{user_id}-{repo_name}"
+    return re.sub(r"[^a-z0-9_-]", "-", raw_name.lower())
 
 
 def get_deployment_or_404(session: Session, deployment_id: int) -> Deployment:
@@ -56,15 +68,16 @@ def create_deployment(
             status_code=409, detail="Этот репозиторий уже задеплоен пользователем"
         )
 
+    user_id = current_user.id or 0
+    project_name = build_app_project_name(body.owner_repo, user_id)
     app_port = allocate_app_port(session, current_user)
-    deploy_path = (
-        DEPLOY_ROOT / str(current_user.username) / body.owner_repo.replace("/", "__")
-    )
+    deploy_path = DEPLOY_ROOT / project_name
     deploy_path.mkdir(parents=True, exist_ok=True)
 
     compose_path = deploy_path / "docker-compose.yml"
     compose_path.write_text(
-        render_app_compose(body.owner_repo, body.tag, app_port), encoding="utf-8"
+        render_app_compose(project_name, body.owner_repo, body.tag, app_port),
+        encoding="utf-8",
     )
 
     env_path = deploy_path / ".env"
@@ -142,9 +155,15 @@ def redeploy(
     deployment.tag = body.tag
     deployment.updated_at = datetime.utcnow()
     deploy_path = Path(deployment.deploy_path)
+    project_name = deploy_path.name
     compose_path = deploy_path / "docker-compose.yml"
     compose_path.write_text(
-        render_app_compose(deployment.owner_repo, deployment.tag, deployment.app_port),
+        render_app_compose(
+            project_name,
+            deployment.owner_repo,
+            deployment.tag,
+            deployment.app_port,
+        ),
         encoding="utf-8",
     )
     session.add(deployment)
@@ -237,4 +256,41 @@ def apply_deployment(
         raise HTTPException(
             status_code=500, detail=f"Не удалось применить деплой: {exc}"
         ) from exc
+    return {"status": "ok"}
+
+
+@router.delete("/{deployment_id}")
+def delete_deployment(
+    deployment_id: int,
+    current_user: User = Depends(require_auth),
+    session: Session = Depends(get_session),
+) -> dict[str, str]:
+    deployment = get_deployment_or_404(session, deployment_id)
+    if not can_access_deployment(current_user, deployment):
+        raise HTTPException(status_code=403, detail="Нет доступа к деплою")
+
+    linked_dbs = session.exec(
+        select(DatabaseInstance).where(DatabaseInstance.deployment_id == deployment.id)
+    ).all()
+    if linked_dbs:
+        raise HTTPException(
+            status_code=409,
+            detail="Сначала удалите связанные базы данных для этого деплоя",
+        )
+
+    deploy_path = Path(deployment.deploy_path)
+    compose_path = deploy_path / "docker-compose.yml"
+    if compose_path.exists():
+        try:
+            docker_compose_down(compose_path, remove_volumes=True)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=500, detail=f"Не удалось остановить деплой: {exc}"
+            ) from exc
+
+    if deploy_path.exists():
+        shutil.rmtree(deploy_path, ignore_errors=True)
+
+    session.delete(deployment)
+    session.commit()
     return {"status": "ok"}

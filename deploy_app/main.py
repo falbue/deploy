@@ -31,7 +31,7 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-app.include_router(admin_router)
+app.include_router(admin_router, include_in_schema=False)
 app.include_router(auth_router)
 app.include_router(deployments_router)
 app.include_router(databases_router)

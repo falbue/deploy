@@ -1,6 +1,6 @@
 services:
   webhook:
-    image: ghcr.io/falbue/deploy:latest
+    image: ghcr.io/falbue/deploy:${tag}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /opt/deploy:/data:rw

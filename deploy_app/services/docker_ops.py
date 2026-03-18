@@ -27,8 +27,15 @@ def ensure_external_network(network_name: str) -> None:
         )
 
 
-def render_app_compose(owner_repo: str, tag: str, app_port: int) -> str:
-    return f"""services:
+def render_app_compose(
+    project_name: str,
+    owner_repo: str,
+    tag: str,
+    app_port: int,
+) -> str:
+    return f"""name: {project_name}
+
+services:
   app:
     image: ghcr.io/{owner_repo}:{tag}
     env_file:
@@ -101,3 +108,23 @@ def docker_compose_apply(compose_path: Path, timeout_seconds: int = 180) -> None
     )
     if up.returncode != 0:
         raise RuntimeError(f"docker compose up failed: {up.stderr or up.stdout}")
+
+
+def docker_compose_down(
+    compose_path: Path,
+    remove_volumes: bool = True,
+    timeout_seconds: int = 180,
+) -> None:
+    command = ["docker", "compose", "-f", str(compose_path), "down", "--remove-orphans"]
+    if remove_volumes:
+        command.append("-v")
+
+    down = subprocess.run(
+        command,
+        cwd=compose_path.parent,
+        capture_output=True,
+        text=True,
+        timeout=timeout_seconds,
+    )
+    if down.returncode != 0:
+        raise RuntimeError(f"docker compose down failed: {down.stderr or down.stdout}")
