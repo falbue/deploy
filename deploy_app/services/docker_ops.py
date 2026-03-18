@@ -28,12 +28,12 @@ def ensure_external_network(network_name: str) -> None:
         )
 
 
-    def _build_run_env(docker_config_dir: Path | None = None) -> dict[str, str]:
-      env = os.environ.copy()
-      if docker_config_dir is not None:
+def _build_run_env(docker_config_dir: Path | None = None) -> dict[str, str]:
+    env = os.environ.copy()
+    if docker_config_dir is not None:
         docker_config_dir.mkdir(parents=True, exist_ok=True)
         env["DOCKER_CONFIG"] = str(docker_config_dir)
-      return env
+    return env
 
 
 def render_app_compose(
@@ -147,21 +147,20 @@ def ensure_gateway_stack() -> Path:
 
 
 def docker_compose_apply(
-  compose_path: Path,
-  timeout_seconds: int = 180,
-  docker_config_dir: Path | None = None,
+    compose_path: Path,
+    timeout_seconds: int = 180,
+    docker_config_dir: Path | None = None,
 ) -> None:
-  ensure_external_network(DB_NET_NAME)
-  ensure_external_network(WEB_NET_NAME)
-  env = _build_run_env(docker_config_dir)
-
+    ensure_external_network(DB_NET_NAME)
+    ensure_external_network(WEB_NET_NAME)
+    env = _build_run_env(docker_config_dir)
     pull = subprocess.run(
         ["docker", "compose", "-f", str(compose_path), "pull"],
         cwd=compose_path.parent,
         capture_output=True,
         text=True,
         timeout=timeout_seconds,
-      env=env,
+        env=env,
     )
     if pull.returncode != 0:
         raise RuntimeError(f"docker compose pull failed: {pull.stderr or pull.stdout}")
@@ -172,7 +171,7 @@ def docker_compose_apply(
         capture_output=True,
         text=True,
         timeout=timeout_seconds,
-      env=env,
+        env=env,
     )
     if up.returncode != 0:
         raise RuntimeError(f"docker compose up failed: {up.stderr or up.stdout}")
@@ -182,7 +181,7 @@ def docker_compose_down(
     compose_path: Path,
     remove_volumes: bool = True,
     timeout_seconds: int = 180,
-  docker_config_dir: Path | None = None,
+    docker_config_dir: Path | None = None,
 ) -> None:
     command = ["docker", "compose", "-f", str(compose_path), "down", "--remove-orphans"]
     if remove_volumes:
@@ -194,7 +193,7 @@ def docker_compose_down(
         capture_output=True,
         text=True,
         timeout=timeout_seconds,
-      env=_build_run_env(docker_config_dir),
+        env=_build_run_env(docker_config_dir),
     )
     if down.returncode != 0:
         raise RuntimeError(f"docker compose down failed: {down.stderr or down.stdout}")
@@ -218,7 +217,7 @@ def docker_compose_run_certbot(
     email: str,
     staging: bool = False,
     timeout_seconds: int = 300,
- ) -> None:
+) -> None:
     command = [
         "docker",
         "compose",
