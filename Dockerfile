@@ -16,8 +16,8 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir --disable-pip-version-check -r requirements.txt
 
-COPY webhook_deployer.py .
+COPY deploy.py .
 
 
 EXPOSE 8080
-CMD ["gunicorn", "-w", "1", "-b", "0.0.0.0:8080", "webhook_deployer:app"]
+CMD ["gunicorn", "-w", "1", "-b", "0.0.0.0:8080", "deploy:app"]

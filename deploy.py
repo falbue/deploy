@@ -6,7 +6,6 @@ import logging
 from pathlib import Path
 from flask import Flask, request, abort, jsonify
 
-# Настройка логирования
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -42,6 +41,33 @@ def verify_signature(payload: bytes, sig_header: str) -> bool:
         return False
     expected = "sha256=" + hmac.new(WEBHOOK_SECRET, payload, hashlib.sha256).hexdigest()
     return hmac.compare_digest(expected, sig_header)
+
+
+def ensure_external_network(network_name: str = "db-net") -> None:
+    """Создаёт внешнюю сеть при отсутствии."""
+    inspect = subprocess.run(
+        ["docker", "network", "inspect", network_name],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if inspect.returncode == 0:
+        logger.info(f"✅ Docker network '{network_name}' уже существует")
+        return
+
+    create = subprocess.run(
+        ["docker", "network", "create", network_name],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if create.returncode != 0:
+        raise RuntimeError(
+            f"Не удалось создать сеть '{network_name}'. "
+            f"STDOUT: {create.stdout} STDERR: {create.stderr}"
+        )
+
+    logger.info(f"✅ Docker network '{network_name}' создана")
 
 
 def ensure_compose_file(repo_path: Path, full_repo: str, tag: str) -> Path:
@@ -109,18 +135,19 @@ def webhook():
     repo_path = DEPLOY_ROOT / owner / repo_name
     repo_path.mkdir(parents=True, exist_ok=True)
 
-    # === Генерация docker-compose.yml с актуальным тегом ===
     try:
         compose_file = ensure_compose_file(repo_path, full_repo, tag)
     except Exception as e:
-        logger.exception(f"💥 Ошибка создания docker-compose.yml: {e}")
+        logger.exception(f"Ошибка создания docker-compose.yml: {e}")
         return jsonify(
-            {"error": "Compose file generation failed", "details": str(e)}
+            {"error": "Ошибка создания docker-compose.yml", "details": str(e)}
         ), 500
 
     # === Выполнение docker compose команд ===
     try:
         logger.info(f"🔄 Запуск деплоя {full_repo}:{tag} в {repo_path}")
+
+        ensure_external_network("db-net")
 
         # Pull с явным указанием файла (надёжнее)
         pull = subprocess.run(
