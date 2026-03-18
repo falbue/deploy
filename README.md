@@ -1,160 +1,178 @@
-# Deploy
+# Deploy API (FastAPI + SQLModel)
 
-Сервис деплоя Docker по webhook
+Полный рефактор сервиса деплоя на FastAPI с SQLModel.
 
-Этот проект запускает небольшой Flask-сервис, который принимает подписанные
-webhook-запросы, обновляет `docker-compose.yml` для конкретного репозитория и
-деплоит контейнеры из GitHub Container Registry (GHCR).
+## Возможности
 
-## Что делает проект
+- Авторизация по бессрочному API-ключу (`X-API-Key`)
+- Роли пользователей: `basic`, `premium`, `admin`
+- Лимиты:
+  - `basic`: максимум 1 деплой
+  - `premium` и `admin`: без лимита
+- Деплой приложений через Docker Compose из GHCR
+- Управление ENV только для своих деплоев (`GET/PUT/PATCH`)
+- Создание PostgreSQL-инстансов через API
+- Порты на пользователя выделяются блоком `x000-x999`
+- Внутри блока пользователя:
+  - приложение: `x000-x899`
+  - база: `x900-x999`
 
-- Принимает `POST /webhook` с данными о репозитории и теге.
-- Проверяет HMAC-подпись `X-Hub-Signature-256`.
-- Создает/обновляет директорию деплоя: `/apps/<owner>/<repo>`.
-- Генерирует `docker-compose.yml` с нужным тегом образа.
-- Проверяет наличие внешней сети `db-net` и создает её при отсутствии.
-- Выполняет:
-	- `docker compose pull`
-	- `docker compose up -d --remove-orphans`
-- Возвращает статус деплоя и назначенный внешний порт.
+## Стек
 
-## Архитектура
+- FastAPI
+- SQLModel (SQLAlchemy)
+- Uvicorn
+- Docker CLI + Docker Compose plugin внутри контейнера
 
-Контейнер сервиса содержит Docker CLI и Compose plugin и использует:
+## Модель безопасности
 
-- `/var/run/docker.sock` (монтируется только для чтения) для управления Docker-демоном хоста.
-- `/opt/deploy`, смонтированную в `/apps`, как корень деплоев.
+- Все endpoint'ы (кроме `/health`) требуют заголовок `X-API-Key`
+- Ключ хранится в БД только в SHA-256 хеше
+- Только админ может:
+  - создавать пользователей
+  - менять роли
+  - сбрасывать ключи
 
-Основной поток:
+## Инициализация БД
 
-1. CI собирает образ и пушит его в GHCR при пуше тега.
-2. Внешняя система отправляет подписанный webhook с `repo` и `tag`.
-3. Сервис валидирует подпись и payload.
-4. Сервис записывает compose-файл и пере-деплоивает целевое приложение.
+Таблицы создаются автоматически на старте приложения (`SQLModel.metadata.create_all`).
 
-## docker-compose.yml
+Если задан `INIT_ADMIN_API_KEY`, при старте создается администратор:
 
-```yaml
-services:
-  app:
-    image: ghcr.io/{full_repo}:{tag}
-    env_file:
-      - .env
-    environment:
-      - IN_DOCKER=1
-    ports:
-      - "{external_port}:5000"
-    restart: unless-stopped
-    networks:
-      - db-net
-    volumes:
-      - ./data:/data
-
-networks:
-  db-net:
-    external: true
-```
-
-Перед деплоем сервис автоматически выполняет проверку сети `db-net`
-и создаёт её, если сеть отсутствует.
-
-## Контракт для деплоимых проектов
-
-Все приложения, которые деплоятся через этот сервис, должны слушать
-внутренний порт `5000` внутри контейнера.
-
-**Причина:** compose-файл генерируется в формате:
-
-```yaml
-ports:
-  - "<external_port>:5000"
-```
-
-Если приложение внутри контейнера слушает другой порт, оно поднимется,
-но будет недоступно снаружи.
-
-Рекомендуется в Dockerfile проекта:
-
-```dockerfile
-EXPOSE 5000
-```
-
-И запускать сервер внутри контейнера на `0.0.0.0:5000`.
+- `INIT_ADMIN_USERNAME` (по умолчанию `admin`)
+- `INIT_ADMIN_API_KEY` (обязательно для автосоздания)
 
 ## Переменные окружения
 
-Из `.env-template`:
+См. `.env-template`:
 
-- `WEBHOOK_SECRET` (обязательно): общий секрет для HMAC-валидации.
+- `DATABASE_URL=sqlite:////apps/deploy.db`
+- `DEPLOY_ROOT=/apps`
+- `DB_ROOT=/apps/databases`
+- `DB_NET_NAME=db-net`
+- `USER_PORT_BLOCK_START=2`
+- `APP_PORT_OFFSET_START=0`
+- `APP_PORT_OFFSET_END=899`
+- `DB_PORT_OFFSET_START=900`
+- `DB_PORT_OFFSET_END=999`
+- `INIT_ADMIN_USERNAME=admin`
+- `INIT_ADMIN_API_KEY=...`
 
-Для рантайма сервиса:
+## Логика портов на пользователя
 
-- `DEPLOY_ROOT` (необязательно, по умолчанию `/apps`): корневая папка для деплоев.
+Для каждого пользователя определяется персональный диапазон:
 
-## Локальный запуск (Docker Compose)
+- `x = USER_PORT_BLOCK_START + (user_id - 1)`
+- общий диапазон пользователя: `x000-x999`
+- app: `x000-x899`
+- db: `x900-x999`
 
-1. Создайте env-файл:
+Пример при `USER_PORT_BLOCK_START=2`:
+
+- `user_id=1` -> `2000-2999` (app: `2000-2899`, db: `2900-2999`)
+- `user_id=2` -> `3000-3999` (app: `3000-3899`, db: `3900-3999`)
+
+## Запуск
+
+1. Создайте env файл
 
 ```bash
 cp .env-template .env
-# укажите WEBHOOK_SECRET в .env
+# обязательно заполните INIT_ADMIN_API_KEY
 ```
 
-2. Запустите сервис:
+2. Поднимите сервис
 
 ```bash
 docker compose up -d
 ```
 
-3. Endpoint сервиса:
+3. Проверка
 
-- `http://127.0.0.1:1500/webhook`
-
-Отдельно создавать сеть `db-net` вручную не требуется: сервис сделает это сам при первом деплое.
-
-## Контракт webhook
-
-### Запрос
-
-- Метод: `POST`
-- Путь: `/webhook`
-- Заголовок: `X-Hub-Signature-256: sha256=<hex_digest>`
-- Тело (JSON):
-
-```json
-{
-	"repo": "owner/repository",
-	"tag": "1.2.3"
-}
+```bash
+curl http://127.0.0.1:1500/health
 ```
 
-### Подпись
+## Основные endpoint'ы
 
-Подпись считается по точному сырому телу запроса:
+### Системные
 
-`sha256=` + `HMAC_SHA256(WEBHOOK_SECRET, raw_body)`
+- `GET /health`
+- `GET /me`
 
-### Успешный ответ
+### Админ
 
-```json
-{
-	"status": "success",
-	"repo": "owner/repository",
-	"tag": "1.2.3",
-	"port": 2001,
-	"message": "Deployed successfully"
-}
+- `POST /admin/users`
+- `GET /admin/users`
+- `PATCH /admin/users/{user_id}/role`
+- `POST /admin/users/{user_id}/reset-api-key`
+
+### Деплои
+
+- `POST /deployments`
+- `GET /deployments`
+- `POST /deployments/{deployment_id}/redeploy`
+- `POST /deployments/{deployment_id}/apply`
+
+### ENV
+
+- `GET /deployments/{deployment_id}/env`
+- `PUT /deployments/{deployment_id}/env` (полная замена)
+- `PATCH /deployments/{deployment_id}/env` (частичное обновление)
+
+### Базы данных
+
+- `POST /databases`
+- `GET /databases`
+
+## Примеры запросов
+
+Создать пользователя (admin key):
+
+```bash
+curl -X POST http://127.0.0.1:1500/admin/users \
+  -H "X-API-Key: ADMIN_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"username":"user1","role":"basic"}'
 ```
 
-## Назначение портов
+Создать деплой:
 
-Внешние порты назначаются детерминированно на основе отсортированных
-директорий owner/repository внутри `DEPLOY_ROOT`:
+```bash
+curl -X POST http://127.0.0.1:1500/deployments \
+  -H "X-API-Key: USER_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"owner_repo":"falbue/swipe-refactor","tag":"latest","run_deploy":true}'
+```
 
-- База для owner: `2000 + owner_index * 1000`
-- Для repository: `base + repo_index + 1`
+Обновить ENV частично:
 
-Это сохраняет стабильность порта при неизменном порядке директорий.
+```bash
+curl -X PATCH http://127.0.0.1:1500/deployments/1/env \
+  -H "X-API-Key: USER_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"values":{"APP_ENV":"prod","TOKEN":"secret"}}'
+```
+
+Создать БД:
+
+```bash
+curl -X POST http://127.0.0.1:1500/databases \
+  -H "X-API-Key: USER_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"main","deployment_id":1,"postgres_image":"postgres:18","postgres_user":"falbue","postgres_password":"G0ri!!@r<3","postgres_db":"falbue","run_deploy":true}'
+```
+
+## Примечание по compose для БД
+
+Сервис генерирует compose с параметрами PostgreSQL из запроса `POST /databases`:
+
+- `postgres_image`
+- `postgres_user`
+- `postgres_password`
+- `postgres_db`
+- сеть `db-net` (external)
+- порт `127.0.0.1:<выделенный_порт>:5432`
 
 
 

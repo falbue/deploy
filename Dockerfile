@@ -17,7 +17,8 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --disable-pip-version-check -r requirements.txt
 
 COPY deploy.py .
+COPY deploy_app ./deploy_app
 
 
 EXPOSE 8080
-CMD ["gunicorn", "-w", "1", "-b", "0.0.0.0:8080", "deploy:app"]
+CMD ["uvicorn", "deploy:app", "--host", "0.0.0.0", "--port", "8080"]

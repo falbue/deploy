@@ -1,12 +1,21 @@
 services:
   webhook:
-    image: ghcr.io/falbue/webhook-in-actions:latest
+    image: ghcr.io/falbue/deploy:latest
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /opt/deploy:/apps:rw
+      - /opt/deploy:/data:rw
     environment:
-      - WEBHOOK_SECRET=${WEBHOOK_SECRET}
-      - DEPLOY_ROOT=/apps
+      - DATABASE_URL=${DATABASE_URL}
+      - DEPLOY_ROOT=${DEPLOY_ROOT}
+      - DB_ROOT=${DB_ROOT}
+      - DB_NET_NAME=${DB_NET_NAME}
+      - USER_PORT_BLOCK_START=${USER_PORT_BLOCK_START}
+      - APP_PORT_OFFSET_START=${APP_PORT_OFFSET_START}
+      - APP_PORT_OFFSET_END=${APP_PORT_OFFSET_END}
+      - DB_PORT_OFFSET_START=${DB_PORT_OFFSET_START}
+      - DB_PORT_OFFSET_END=${DB_PORT_OFFSET_END}
+      - INIT_ADMIN_API_KEY=${INIT_ADMIN_API_KEY}
+      - INIT_ADMIN_USERNAME=${INIT_ADMIN_USERNAME}
     restart: unless-stopped
     ports:
       - "127.0.0.1:1500:8080"

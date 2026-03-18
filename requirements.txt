@@ -1,2 +1,4 @@
-flask
-gunicorn
+fastapi
+sqlmodel
+uvicorn[standard]
+python-multipart
