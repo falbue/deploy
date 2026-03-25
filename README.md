@@ -33,6 +33,35 @@
   - менять роли
   - сбрасывать ключи
 
+## Пример docker-compose.yml
+```yaml
+services:
+  deploy:
+    image: ghcr.io/falbue/deploy:{tag}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /opt/deploy:/data:rw
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - DEPLOY_ROOT=${DEPLOY_ROOT}
+      - DB_ROOT=${DB_ROOT}
+      - DB_NET_NAME=${DB_NET_NAME}
+      - WEB_NET_NAME=${WEB_NET_NAME}
+      - ENABLE_NGINX_GATEWAY=${ENABLE_NGINX_GATEWAY:-true}
+      - NGINX_GATEWAY_ROOT=${NGINX_GATEWAY_ROOT}
+      - DOCKER_AUTH_ROOT=${DOCKER_AUTH_ROOT}
+      - USER_PORT_BLOCK_START=${USER_PORT_BLOCK_START}
+      - APP_PORT_OFFSET_START=${APP_PORT_OFFSET_START}
+      - APP_PORT_OFFSET_END=${APP_PORT_OFFSET_END}
+      - DB_PORT_OFFSET_START=${DB_PORT_OFFSET_START}
+      - DB_PORT_OFFSET_END=${DB_PORT_OFFSET_END}
+      - INIT_ADMIN_API_KEY=${INIT_ADMIN_API_KEY}
+      - INIT_ADMIN_USERNAME=${INIT_ADMIN_USERNAME}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:1500:8080"
+```
+
 ## Инициализация БД
 
 Таблицы создаются автоматически на старте приложения (`SQLModel.metadata.create_all`).
