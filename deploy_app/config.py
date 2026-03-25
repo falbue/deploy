@@ -1,11 +1,19 @@
 import os
 from pathlib import Path
 
+
+def env_flag(name: str, default: bool = False) -> bool:
+	raw = os.environ.get(name)
+	if raw is None:
+		return default
+	return raw.strip().lower() in {"1", "true", "yes", "on"}
+
 DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./deploy.db")
 DEPLOY_ROOT = Path(os.environ.get("DEPLOY_ROOT", "/apps"))
 DB_ROOT = Path(os.environ.get("DB_ROOT", "/apps/databases"))
 DB_NET_NAME = os.environ.get("DB_NET_NAME", "db-net")
 WEB_NET_NAME = os.environ.get("WEB_NET_NAME", "web-net")
+ENABLE_NGINX_GATEWAY = env_flag("ENABLE_NGINX_GATEWAY", default=True)
 NGINX_GATEWAY_ROOT = Path(
 	os.environ.get("NGINX_GATEWAY_ROOT", "/data/nginx-gateway")
 )

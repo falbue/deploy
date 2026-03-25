@@ -2,7 +2,12 @@ import os
 import subprocess
 from pathlib import Path
 
-from deploy_app.config import DB_NET_NAME, NGINX_GATEWAY_ROOT, WEB_NET_NAME
+from deploy_app.config import (
+    DB_NET_NAME,
+    ENABLE_NGINX_GATEWAY,
+    NGINX_GATEWAY_ROOT,
+    WEB_NET_NAME,
+)
 
 
 def ensure_external_network(network_name: str) -> None:
@@ -42,6 +47,18 @@ def render_app_compose(
     tag: str,
     app_port: int,
 ) -> str:
+    app_networks = [f"      - {DB_NET_NAME}"]
+    networks_block = f"""networks:
+  {DB_NET_NAME}:
+    external: true
+"""
+    if ENABLE_NGINX_GATEWAY:
+        app_networks.append(f"      - {WEB_NET_NAME}")
+        networks_block += f"""  {WEB_NET_NAME}:
+    external: true
+"""
+
+    app_networks_rendered = "\n".join(app_networks)
     return f"""name: {project_name}
 
 services:
@@ -55,16 +72,11 @@ services:
       - \"{app_port}:5000\"
     restart: unless-stopped
     networks:
-      - {DB_NET_NAME}
-      - {WEB_NET_NAME}
+{app_networks_rendered}
     volumes:
       - ./data:/data
 
-networks:
-  {DB_NET_NAME}:
-    external: true
-  {WEB_NET_NAME}:
-    external: true
+{networks_block}
 """
 
 
@@ -130,6 +142,11 @@ networks:
 
 
 def ensure_gateway_stack() -> Path:
+    if not ENABLE_NGINX_GATEWAY:
+        raise RuntimeError(
+            "Встроенный Nginx gateway отключен (ENABLE_NGINX_GATEWAY=false)"
+        )
+
     ensure_external_network(WEB_NET_NAME)
 
     gateway_root = NGINX_GATEWAY_ROOT
@@ -152,7 +169,8 @@ def docker_compose_apply(
     docker_config_dir: Path | None = None,
 ) -> None:
     ensure_external_network(DB_NET_NAME)
-    ensure_external_network(WEB_NET_NAME)
+    if ENABLE_NGINX_GATEWAY:
+        ensure_external_network(WEB_NET_NAME)
     env = _build_run_env(docker_config_dir)
     pull = subprocess.run(
         ["docker", "compose", "-f", str(compose_path), "pull"],

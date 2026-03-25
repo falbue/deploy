@@ -51,6 +51,7 @@
 - `DB_ROOT=/data/databases`
 - `DB_NET_NAME=db-net`
 - `WEB_NET_NAME=web-net`
+- `ENABLE_NGINX_GATEWAY=true`
 - `NGINX_GATEWAY_ROOT=/data/nginx-gateway`
 - `DOCKER_AUTH_ROOT=/data/docker-auth`
 - `USER_PORT_BLOCK_START=2`
@@ -256,7 +257,8 @@ curl -X POST http://127.0.0.1:1500/deployments/1/nginx/certbot \
 
 ## Nginx Gateway
 
-Сервис автоматически поднимает gateway-стек в `NGINX_GATEWAY_ROOT`:
+Сервис управляет встроенным gateway-стеком в `NGINX_GATEWAY_ROOT`, если
+`ENABLE_NGINX_GATEWAY=true`:
 
 - `nginx:alpine` (порты `80/443`)
 - `certbot/certbot` с автообновлением сертификатов каждые 12 часов
@@ -265,6 +267,10 @@ curl -X POST http://127.0.0.1:1500/deployments/1/nginx/certbot \
 Все app-контейнеры автоматически подключаются к `web-net`, поэтому nginx может проксировать на любой деплой.
 
 Перед сохранением и применением nginx-конфига API выполняет `nginx -t`; при ошибке конфиг откатывается.
+
+Если `ENABLE_NGINX_GATEWAY=false`, встроенный nginx/certbot не используется,
+`/deployments/{id}/nginx/*` endpoint'ы возвращают `409`, а app-контейнеры не
+подключаются к `web-net`.
 
 
 

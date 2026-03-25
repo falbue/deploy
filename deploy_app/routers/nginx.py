@@ -4,6 +4,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session
 
+from deploy_app.config import ENABLE_NGINX_GATEWAY
 from deploy_app.db import get_session
 from deploy_app.deps import require_auth
 from deploy_app.models import Deployment, User
@@ -22,6 +23,16 @@ from deploy_app.services.docker_ops import (
 )
 
 router = APIRouter(prefix="/deployments", tags=["nginx"])
+
+
+def ensure_nginx_gateway_enabled() -> None:
+    if not ENABLE_NGINX_GATEWAY:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Встроенный Nginx gateway отключен через ENABLE_NGINX_GATEWAY=false"
+            ),
+        )
 
 
 def slugify(value: str) -> str:
@@ -137,6 +148,7 @@ def set_nginx_preset_api(
     current_user: User = Depends(require_auth),
     session: Session = Depends(get_session),
 ) -> dict[str, str]:
+    ensure_nginx_gateway_enabled()
     deployment, owner = get_deployment_for_nginx(session, deployment_id, current_user)
     compose_path = ensure_gateway_stack()
 
@@ -184,6 +196,7 @@ def set_nginx_custom_config(
     current_user: User = Depends(require_auth),
     session: Session = Depends(get_session),
 ) -> dict[str, str]:
+    ensure_nginx_gateway_enabled()
     get_deployment_for_nginx(session, deployment_id, current_user)
     compose_path = ensure_gateway_stack()
 
@@ -201,6 +214,7 @@ def activate_certbot(
     current_user: User = Depends(require_auth),
     session: Session = Depends(get_session),
 ) -> dict[str, str]:
+    ensure_nginx_gateway_enabled()
     deployment, owner = get_deployment_for_nginx(session, deployment_id, current_user)
     compose_path = ensure_gateway_stack()
 
@@ -245,6 +259,7 @@ def delete_nginx_config(
     current_user: User = Depends(require_auth),
     session: Session = Depends(get_session),
 ) -> dict[str, str]:
+    ensure_nginx_gateway_enabled()
     get_deployment_for_nginx(session, deployment_id, current_user)
     compose_path = ensure_gateway_stack()
 
